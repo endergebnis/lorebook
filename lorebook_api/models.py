@@ -92,6 +92,7 @@ class LorebookConfig(BaseModel):
     neo4j_password: str = "lorebook_secure_pass"
 
     llm_base_url: str = "http://localhost:8080/v1"
+    llm_base_urls: list[str] = []  # ponytail: for multi-instance parallelism
     llm_api_key: str = "not-needed"
 
     model_name: str = "gemma-4-26B-A4B-it-uncensored-Q4_K_M.gguf"

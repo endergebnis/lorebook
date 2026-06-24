@@ -1,11 +1,12 @@
 """
-Async llama.cpp client — v2 with tool calling support.
+Async llama.cpp client — v2 with tool calling support + multi-instance round-robin.
 ponytail: single chat() method handles both plain + tool-assisted extraction.
 """
 
 from __future__ import annotations
 
 import asyncio
+import itertools
 import json
 import logging
 from typing import Any, Optional
@@ -19,15 +20,22 @@ logger = logging.getLogger(__name__)
 
 
 class LLMClient:
-    """Thin async wrapper around the llama.cpp OpenAI-compatible API."""
+    """Thin async wrapper around the llama.cpp OpenAI-compatible API.
+    
+    Supports multiple backend URLs (llm_base_urls) for parallel extraction.
+    Requests round-robin across instances when concurrency > 1.
+    """
 
     def __init__(self, config: LorebookConfig) -> None:
-        self._base = config.llm_base_url.rstrip("/")
-        self._completions = f"{self._base}/chat/completions"
-        self._health = f"{self._base.replace('/v1', '')}/health"
         self._temperature = config.temperature
         self._model = config.model_name
         self._session: Optional[aiohttp.ClientSession] = None
+
+        # Build endpoint list — llm_base_urls takes priority, fall back to single URL
+        urls = config.llm_base_urls or [config.llm_base_url]
+        self._endpoints = [u.rstrip("/") + "/chat/completions" for u in urls]
+        self._endpoint_cycle = itertools.cycle(self._endpoints)
+        self._lock = asyncio.Lock()  # guards round-robin pick
 
     async def start(self) -> None:
         if self._session is None:
@@ -45,6 +53,15 @@ class LLMClient:
     @model_name.setter
     def model_name(self, value: str) -> None:
         self._model = value
+
+    @property
+    def endpoint_count(self) -> int:
+        return len(self._endpoints)
+
+    async def _pick_endpoint(self) -> str:
+        """Round-robin next endpoint URL."""
+        async with self._lock:
+            return next(self._endpoint_cycle)
 
     # ------------------------------------------------------------------
     # Low-level chat
@@ -79,7 +96,9 @@ class LLMClient:
         if tool_choice:
             payload["tool_choice"] = tool_choice
 
-        async with self._session.post(self._completions, json=payload) as resp:
+        async with self._session.post(
+            await self._pick_endpoint(), json=payload
+        ) as resp:
             if resp.status != 200:
                 body = await resp.text()
                 raise RuntimeError(f"llama.cpp {resp.status}: {body[:500]}")

@@ -18,6 +18,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from .models import LorebookConfig
 from .pipeline import LorebookPipeline
 from .runner import PipelineRunner
+from .llm_client import LLMClient
 
 logger = logging.getLogger("lorebook.web")
 
@@ -104,6 +105,7 @@ async def get_config():
         "concurrency": cfg.concurrency,
         "chunk_size_tokens": cfg.chunk_size_tokens,
         "llm_base_url": cfg.llm_base_url,
+        "llm_base_urls": cfg.llm_base_urls,
         "neo4j_uri": cfg.neo4j_uri,
         "input_dir": cfg.input_dir,
         "tools_enabled": r._tools_loaded,
@@ -120,6 +122,13 @@ async def update_config(request: Request):
     for field in ("model_name", "temperature", "concurrency", "chunk_size_tokens"):
         if field in body:
             setattr(cfg, field, body[field])
+
+    # Multi-instance URLs
+    if "llm_base_urls" in body and isinstance(body["llm_base_urls"], list):
+        cfg.llm_base_urls = body["llm_base_urls"]
+        # Rebuild endpoint list in LLM client
+        r._pipeline.llm = LLMClient(cfg)
+        await r._pipeline.llm.start()
 
     # Propagate model name to LLM client
     if "model_name" in body:
@@ -488,6 +497,7 @@ function startSSE() {
 
     if (msg.type === 'status') {
       loadStats();
+      if (msg.message) logLine('phase', msg.message);
     } else if (msg.type === 'phase') {
       logLine('phase', `📦 Phase: ${msg.phase}${msg.chunks ? ' (' + msg.chunks + ' chunks)' : ''}${msg.total ? ' (' + msg.total + ' chunks)' : ''}`);
       loadStats();
@@ -515,7 +525,8 @@ function startSSE() {
     } else if (msg.type === 'llm_retry') {
       logLine('', `  ⚠ Turn ${msg.turn}: ${msg.reason}, retrying...`);
     } else if (msg.type === 'done') {
-      logLine('done', `✅ Done! ${msg.entities} entities, ${msg.events} events in ${Math.round(msg.elapsed_seconds / 60)} min`);
+      const doneMsg = msg.message || `✅ Done! ${msg.entities} entities, ${msg.events} events in ${Math.round(msg.elapsed_seconds / 60)} min`;
+      logLine('done', doneMsg);
       document.getElementById('global-progress').style.width = '100%';
       document.getElementById('eta-line').textContent = '';
       _sse.close();

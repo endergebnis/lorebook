@@ -81,6 +81,18 @@ class GraphStore:
                 )
 
     # ------------------------------------------------------------------
+    # Resume support
+    # ------------------------------------------------------------------
+
+    async def get_processed_chunk_ids(self) -> set[str]:
+        """Return chunk IDs that already have entities extracted from them."""
+        async with self._driver.session() as session:
+            result = await session.run(
+                "MATCH (:Entity)-[:EXTRACTED_FROM]->(c:Chunk) RETURN DISTINCT c.id AS id"
+            )
+            return {r["id"] async for r in result}
+
+    # ------------------------------------------------------------------
     # Events
     # ------------------------------------------------------------------
 

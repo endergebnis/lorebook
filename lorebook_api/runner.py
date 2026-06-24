@@ -92,6 +92,31 @@ class PipelineRunner:
 
             # Phase 2 — Extract with tools
             self._ensure_tools()
+
+            # Resume: skip chunks that already have entities
+            processed = await self._pipeline.graph.get_processed_chunk_ids()
+            pending = [c for c in chunks if c.id not in processed]
+            if processed:
+                self._progress.put_nowait({
+                    "type": "status", "status": "running",
+                    "message": f"Resuming: {len(pending)}/{len(chunks)} chunks remaining"
+                })
+                logger.info("Skipping %d already-processed chunks", len(processed))
+            chunks = pending
+
+            if not chunks:
+                elapsed = time.time() - start_time
+                self._progress.put_nowait({
+                    "type": "done",
+                    "chunks": 0,
+                    "entities": entity_count,
+                    "events": event_count,
+                    "elapsed_seconds": int(elapsed),
+                    "message": "All chunks already processed — nothing to do",
+                })
+                return {"chunks": 0, "entities": entity_count, "events": event_count,
+                        "elapsed_seconds": int(elapsed)}
+
             self._progress.put_nowait({"type": "phase", "phase": "extract", "total": len(chunks)})
 
             tools_def = self._tool_loader.get_definitions() if self._tool_loader.names else None
@@ -99,59 +124,69 @@ class PipelineRunner:
 
             entity_count = 0
             event_count = 0
+            completed = 0
+            total = len(chunks)
+            sem = asyncio.Semaphore(self._pipeline.config.concurrency)
+            entity_lock = asyncio.Lock()
 
-            for i, chunk in enumerate(chunks):
-                # Pause gate
-                await self._pause_event.wait()
+            async def _process(chunk: Chunk, index: int) -> None:
+                nonlocal entity_count, event_count, completed
 
-                try:
-                    output = await extract_chunk(
-                        self._pipeline.llm,
-                        chunk.text,
-                        tools=tools_def,
-                        tool_executor=tool_executor,
-                        progress_cb=self._push_progress,
-                    )
+                await self._pause_event.wait()  # pause gate
 
-                    # Store entities
-                    entity_names = []
-                    for entity in output.entities:
-                        await self._pipeline.graph.upsert_entity(entity, chunk_id=chunk.id)
-                        entity_names.append(entity.name)
+                async with sem:
+                    try:
+                        output = await extract_chunk(
+                            self._pipeline.llm,
+                            chunk.text,
+                            tools=tools_def,
+                            tool_executor=tool_executor,
+                            progress_cb=self._push_progress,
+                        )
 
-                    # Store events
-                    for event in output.events:
-                        await self._pipeline.graph.upsert_event(event, chunk_id=chunk.id)
+                        # Store
+                        entity_names = []
+                        for entity in output.entities:
+                            await self._pipeline.graph.upsert_entity(entity, chunk_id=chunk.id)
+                            entity_names.append(entity.name)
+                        for event in output.events:
+                            await self._pipeline.graph.upsert_event(event, chunk_id=chunk.id)
 
-                    entity_count += len(output.entities)
-                    event_count += len(output.events)
+                        async with entity_lock:
+                            entity_count += len(output.entities)
+                            event_count += len(output.events)
+                            completed += 1
 
-                    # Progress message
-                    elapsed = time.time() - start_time
-                    eta = (elapsed / (i + 1)) * (len(chunks) - i - 1) if i > 0 else 0
-                    self._progress.put_nowait({
-                        "type": "chunk",
-                        "chunk_index": i + 1,
-                        "total_chunks": len(chunks),
-                        "volume": chunk.volume,
-                        "chapter": chunk.chapter,
-                        "entities_found": len(output.entities),
-                        "events_found": len(output.events),
-                        "entity_names": entity_names[:5],
-                        "total_entities": entity_count,
-                        "total_events": event_count,
-                        "eta_seconds": int(eta),
-                    })
+                        elapsed = time.time() - start_time
+                        eta = (elapsed / completed) * (total - completed) if completed > 0 else 0
+                        self._progress.put_nowait({
+                            "type": "chunk",
+                            "chunk_index": completed,
+                            "total_chunks": total,
+                            "volume": chunk.volume,
+                            "chapter": chunk.chapter,
+                            "entities_found": len(output.entities),
+                            "events_found": len(output.events),
+                            "entity_names": entity_names[:5],
+                            "total_entities": entity_count,
+                            "total_events": event_count,
+                            "eta_seconds": int(eta),
+                        })
 
-                except Exception:
-                    logger.exception("Chunk %d failed", i + 1)
-                    self._progress.put_nowait({
-                        "type": "chunk_error",
-                        "chunk_index": i + 1,
-                        "total_chunks": len(chunks),
-                        "volume": chunk.volume,
-                        "chapter": chunk.chapter,
-                    })
+                    except Exception:
+                        logger.exception("Chunk %s failed", chunk.id[:8])
+                        async with entity_lock:
+                            completed += 1
+                        self._progress.put_nowait({
+                            "type": "chunk_error",
+                            "chunk_index": completed,
+                            "total_chunks": total,
+                            "volume": chunk.volume,
+                            "chapter": chunk.chapter,
+                        })
+
+            tasks = [_process(c, i) for i, c in enumerate(chunks)]
+            await asyncio.gather(*tasks)
 
             # Done
             elapsed = time.time() - start_time

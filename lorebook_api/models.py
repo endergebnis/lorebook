@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # ---------------------------------------------------------------------------
@@ -49,6 +49,7 @@ class Chunk(BaseModel):
 # ---------------------------------------------------------------------------
 
 class ExtractedEntity(BaseModel):
+    model_config = ConfigDict(extra="allow")  # ponytail: flexible properties per type
     id: str = Field(default_factory=lambda: uuid4().hex[:12])
     name: str
     type: EntityType
@@ -57,6 +58,7 @@ class ExtractedEntity(BaseModel):
 
 
 class ExtractedEvent(BaseModel):
+    model_config = ConfigDict(extra="allow")  # ponytail: flexible properties
     description: str
     location_id: Optional[str] = None
     involved_entity_ids: list[str] = []

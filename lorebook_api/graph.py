@@ -56,18 +56,34 @@ class GraphStore:
     # ------------------------------------------------------------------
 
     async def upsert_entity(self, entity: ExtractedEntity, chunk_id: Optional[str] = None) -> None:
+        # Build dynamic properties from model fields + extra fields
+        extra = getattr(entity, "model_extra", None) or {}
+        props = {
+            "id": entity.id,
+            "name": entity.name,
+            "type": entity.type.value,
+            "description": entity.description,
+            "aliases": entity.aliases,
+            **extra,  # ponytail: store race,gender,status,affiliation,etc. from LLM
+        }
+        # Build SET clause dynamically
+        set_pairs = []
+        set_params: dict[str, Any] = {}
+        for i, (k, v) in enumerate(props.items()):
+            if k == "id":
+                continue
+            param_key = f"p{i}"
+            set_pairs.append(f"e.{k} = ${param_key}")
+            set_params[param_key] = v
+
         async with self._driver.session() as session:
             await session.run(
-                """
-                MERGE (e:Entity {id: $id})
-                SET e.name = $name, e.type = $type,
-                    e.description = $description, e.aliases = $aliases
+                f"""
+                MERGE (e:Entity {{id: $id}})
+                SET {', '.join(set_pairs)}
                 """,
                 id=entity.id,
-                name=entity.name,
-                type=entity.type.value,
-                description=entity.description,
-                aliases=entity.aliases,
+                **set_params,
             )
             if chunk_id:
                 await session.run(

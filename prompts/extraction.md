@@ -8,7 +8,7 @@ Gib mehrere Entity-Namen als Batch-Query an für Effizienz.
 
 **Extrahiere:**
 1. **Entities** – Charaktere, Orte, Gegenstände, Fraktionen, Konzepte (Magie-Systeme, Rassen, Regeln)
-   - `id`: eindeutiger lowercase identifier (z.B. "alice", "wonderland", "alchemy")
+   - `id`: eindeutiger lowercase identifier (z.B. "sora", "elchea", "immanity")
    - `name`: Anzeigename wie im Text
    - `type`: "Character", "Location", "Item", "Faction", oder "Concept"
    - `description`: 1-2 Sätze präzise Zusammenfassung

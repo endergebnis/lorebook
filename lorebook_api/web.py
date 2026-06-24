@@ -12,6 +12,7 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import aiohttp
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 
@@ -92,6 +93,27 @@ async def get_stats():
         }
     except Exception:
         return {"entities": 0, "per_type": {}, "latest_entities": [], "is_running": False, "is_paused": False}
+
+
+@app.get("/api/workers")
+async def get_workers():
+    """Worker endpoint list + health check."""
+    r = _get_runner()
+    cfg = r._pipeline.config
+    urls = cfg.llm_base_urls or [cfg.llm_base_url]
+    workers = []
+    for i, url in enumerate(urls):
+        base = url.rstrip("/")
+        # Health via /health endpoint (strip /v1 if present)
+        health_url = base.replace("/v1", "") + "/health"
+        try:
+            async with aiohttp.ClientSession() as s:
+                async with s.get(health_url, timeout=aiohttp.ClientTimeout(total=3)) as resp:
+                    online = resp.status == 200
+        except Exception:
+            online = False
+        workers.append({"id": i, "url": base, "online": online})
+    return {"workers": workers, "configured_for_pipeline": bool(cfg.llm_base_urls)}
 
 
 @app.get("/api/config")
@@ -301,6 +323,12 @@ label { font-size: 12px; color: var(--dim); display: block; margin-bottom: 2px; 
 #status-dot.paused { background: var(--yellow); }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
 .eta { font-size: 12px; color: var(--dim); margin-top: 4px; }
+.worker-panel { margin-top: 12px; }
+.worker-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; }
+.worker-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.worker-dot.online { background: var(--green); }
+.worker-dot.offline { background: var(--red); }
+.worker-url { color: var(--dim); font-family: monospace; font-size: 11px; }
 </style>
 </head>
 <body>
@@ -356,6 +384,12 @@ label { font-size: 12px; color: var(--dim); display: block; margin-bottom: 2px; 
       <option value="4">4</option>
     </select>
     <div id="config-saved" style="font-size:11px;color:var(--green);margin-top:4px;display:none;">✅ Saved</div>
+  </div>
+
+  <!-- Workers -->
+  <div class="panel">
+    <h2>🖥 Workers</h2>
+    <div id="workers-container" style="font-size:13px;color:var(--dim);">Checking…</div>
   </div>
 
   <!-- Live log -->
@@ -538,10 +572,28 @@ function startSSE() {
 }
 
 // Init
+async function loadWorkers() {
+  try {
+    const r = await fetch(API + '/api/workers');
+    const d = await r.json();
+    const w = d.workers || [];
+    document.getElementById('workers-container').innerHTML = w.length
+      ? w.map(wk => `<div class="worker-row">
+          <span class="worker-dot ${wk.online ? 'online' : 'offline'}"></span>
+          <span>W${wk.id}</span>
+          <span class="worker-url">${wk.url}</span>
+          <span style="font-size:11px;">${wk.online ? '🟢 online' : '🔴 offline'}</span>
+        </div>`).join('')
+      : '<span style="color:var(--dim);">No workers configured</span>';
+  } catch(e) { console.error(e); }
+}
+
 loadStats();
 loadConfig();
 loadModels();
+loadWorkers();
 setInterval(loadStats, 5000);
+setInterval(loadWorkers, 8000);
 </script>
 </body>
 </html>"""

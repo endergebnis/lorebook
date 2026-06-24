@@ -56,34 +56,18 @@ class GraphStore:
     # ------------------------------------------------------------------
 
     async def upsert_entity(self, entity: ExtractedEntity, chunk_id: Optional[str] = None) -> None:
-        # Build dynamic properties from model fields + extra fields
-        extra = getattr(entity, "model_extra", None) or {}
-        props = {
-            "id": entity.id,
-            "name": entity.name,
-            "type": entity.type.value,
-            "description": entity.description,
-            "aliases": entity.aliases,
-            **extra,  # ponytail: store race,gender,status,affiliation,etc. from LLM
-        }
-        # Build SET clause dynamically
-        set_pairs = []
-        set_params: dict[str, Any] = {}
-        for i, (k, v) in enumerate(props.items()):
-            if k == "id":
-                continue
-            param_key = f"p{i}"
-            set_pairs.append(f"e.{k} = ${param_key}")
-            set_params[param_key] = v
+        # ponytail: model_dump(mode='json') gives all fields as Neo4j-safe types
+        props = entity.model_dump(mode="json")
+        entity_id = props.pop("id")
 
         async with self._driver.session() as session:
             await session.run(
-                f"""
-                MERGE (e:Entity {{id: $id}})
-                SET {', '.join(set_pairs)}
+                """
+                MERGE (e:Entity {id: $id})
+                SET e += $props
                 """,
-                id=entity.id,
-                **set_params,
+                id=entity_id,
+                props=props,
             )
             if chunk_id:
                 await session.run(

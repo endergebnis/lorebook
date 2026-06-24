@@ -18,7 +18,6 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from .models import LorebookConfig
 from .pipeline import LorebookPipeline
 from .runner import PipelineRunner
-from .llm_client import LLMClient
 
 logger = logging.getLogger("lorebook.web")
 
@@ -123,12 +122,9 @@ async def update_config(request: Request):
         if field in body:
             setattr(cfg, field, body[field])
 
-    # Multi-instance URLs
+    # Multi-instance URLs (workers pick up on next pipeline run)
     if "llm_base_urls" in body and isinstance(body["llm_base_urls"], list):
         cfg.llm_base_urls = body["llm_base_urls"]
-        # Rebuild endpoint list in LLM client
-        r._pipeline.llm = LLMClient(cfg)
-        await r._pipeline.llm.start()
 
     # Propagate model name to LLM client
     if "model_name" in body:
@@ -499,13 +495,14 @@ function startSSE() {
       loadStats();
       if (msg.message) logLine('phase', msg.message);
     } else if (msg.type === 'phase') {
-      logLine('phase', `📦 Phase: ${msg.phase}${msg.chunks ? ' (' + msg.chunks + ' chunks)' : ''}${msg.total ? ' (' + msg.total + ' chunks)' : ''}`);
+      const workers = msg.workers ? ` ${msg.workers} worker(s)` : '';
+      logLine('phase', `📦 Phase: ${msg.phase}${msg.chunks ? ' (' + msg.chunks + ' chunks)' : ''}${msg.total ? ' (' + msg.total + ' chunks' + workers + ')' : ''}`);
       loadStats();
     } else if (msg.type === 'chunk') {
       const pct = ((msg.chunk_index / msg.total_chunks) * 100).toFixed(1);
       document.getElementById('global-progress').style.width = pct + '%';
       document.getElementById('eta-line').textContent = msg.eta_seconds > 0 ? `ETA: ~${Math.round(msg.eta_seconds / 60)} min` : '';
-      let line = `[${msg.chunk_index}/${msg.total_chunks}] ${msg.volume} / ${msg.chapter} — ${msg.entities_found} entities`;
+      let line = `[${msg.chunk_index}/${msg.total_chunks}] W${msg.worker ?? '?'} ${msg.volume} / ${msg.chapter} — ${msg.entities_found} entities`;
       if (msg.entity_names && msg.entity_names.length) {
         line += ` (${msg.entity_names.join(', ')})`;
       }

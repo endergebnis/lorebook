@@ -147,6 +147,8 @@ async def update_config(request: Request):
     # Multi-instance URLs (workers pick up on next pipeline run)
     if "llm_base_urls" in body and isinstance(body["llm_base_urls"], list):
         cfg.llm_base_urls = body["llm_base_urls"]
+    if "llm_base_url" in body and isinstance(body["llm_base_url"], str):
+        cfg.llm_base_url = body["llm_base_url"]
 
     # Propagate model name to LLM client
     if "model_name" in body:
@@ -383,6 +385,8 @@ label { font-size: 12px; color: var(--dim); display: block; margin-bottom: 2px; 
       <option value="2">2</option>
       <option value="4">4</option>
     </select>
+    <label>Worker URLs (comma-separated)</label>
+    <input type="text" id="worker-urls" placeholder="http://localhost:8080/v1, http://192.168.188.200:8080/v1" onchange="updateConfig()">
     <div id="config-saved" style="font-size:11px;color:var(--green);margin-top:4px;display:none;">✅ Saved</div>
   </div>
 
@@ -449,6 +453,9 @@ async function loadConfig() {
     document.getElementById('concurrency-select').value = d.concurrency;
     document.getElementById('tool-badge').style.background = d.tools_enabled ? '#22c55e' : '#6b7280';
     document.getElementById('tool-badge').textContent = d.tools_enabled ? '🔧 tools on' : '⚙ tools off';
+    // Worker URLs
+    const urls = d.llm_base_urls || [];
+    document.getElementById('worker-urls').value = urls.join(', ');
   } catch(e) { console.error(e); }
 }
 
@@ -471,11 +478,13 @@ async function updateConfig() {
   const model = document.getElementById('model-select').value;
   const temp = parseFloat(document.getElementById('temp-slider').value);
   const concurrency = parseInt(document.getElementById('concurrency-select').value);
+  const urlsRaw = document.getElementById('worker-urls').value;
+  const llm_base_urls = urlsRaw ? urlsRaw.split(',').map(s => s.trim()).filter(s => s) : [];
 
   await fetch(API + '/api/config', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({model_name: model, temperature: temp, concurrency: concurrency})
+    body: JSON.stringify({model_name: model, temperature: temp, concurrency: concurrency, llm_base_urls: llm_base_urls})
   });
 
   const saved = document.getElementById('config-saved');

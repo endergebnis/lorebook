@@ -29,7 +29,14 @@ class EntityType(str, Enum):
 # ---------------------------------------------------------------------------
 
 class Chunk(BaseModel):
-    id: str = Field(default_factory=lambda: uuid4().hex[:12])
+    id: str = Field(default="")  # set via make_id
+
+    # ponytail: deterministic ID so resume survives across runs
+    @classmethod
+    def make_id(cls, volume: str, chapter: str, index: int) -> str:
+        import hashlib
+        return hashlib.md5(f"{volume}|{chapter}|{index}".encode()).hexdigest()[:12]
+
     volume: str
     chapter: str
     text: str

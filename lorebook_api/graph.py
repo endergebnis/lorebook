@@ -85,12 +85,17 @@ class GraphStore:
     # ------------------------------------------------------------------
 
     async def get_processed_chunk_ids(self) -> set[str]:
-        """Return chunk IDs that already have entities extracted from them."""
+        """Return deterministic chunk IDs that already have entities extracted."""
+        from lorebook_api.models import Chunk
         async with self._driver.session() as session:
             result = await session.run(
-                "MATCH (:Entity)-[:EXTRACTED_FROM]->(c:Chunk) RETURN DISTINCT c.id AS id"
+                "MATCH (:Entity)-[:EXTRACTED_FROM]->(c:Chunk) "
+                "RETURN DISTINCT c.volume AS volume, c.chapter AS chapter, c.index AS index"
             )
-            return {r["id"] async for r in result}
+            ids = set()
+            async for r in result:
+                ids.add(Chunk.make_id(r["volume"], r["chapter"], r["index"]))
+            return ids
 
     # ------------------------------------------------------------------
     # Events

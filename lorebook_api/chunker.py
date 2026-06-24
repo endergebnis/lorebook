@@ -90,8 +90,10 @@ def _chunk_section(
 
         # If adding this scene exceeds chunk size, finalize current chunk
         if token_estimate(current_chunk + "\n\n" + scene) > chunk_tokens and current_chunk:
+            cid = Chunk.make_id(volume, chapter, chunk_index)
             chunks.append(
                 Chunk(
+                    id=cid,
                     volume=volume,
                     chapter=chapter,
                     text=current_chunk.strip(),
@@ -108,8 +110,10 @@ def _chunk_section(
 
     # Don't forget the last chunk
     if current_chunk.strip():
+        cid = Chunk.make_id(volume, chapter, chunk_index)
         chunks.append(
             Chunk(
+                id=cid,
                 volume=volume,
                 chapter=chapter,
                 text=current_chunk.strip(),

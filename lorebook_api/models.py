@@ -106,8 +106,6 @@ class LorebookConfig(BaseModel):
     temperature: float = 0.25
     max_tokens: int = 4096
 
-    chunk_size_tokens: int = 12000
-    chunk_overlap_tokens: int = 200
     concurrency: int = 1
 
     input_dir: str = "/mnt/data/lightnovel/output_clean"

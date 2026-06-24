@@ -124,7 +124,6 @@ async def get_config():
         "model_name": cfg.model_name,
         "temperature": cfg.temperature,
         "concurrency": cfg.concurrency,
-        "chunk_size_tokens": cfg.chunk_size_tokens,
         "llm_base_url": cfg.llm_base_url,
         "llm_base_urls": cfg.llm_base_urls,
         "neo4j_uri": cfg.neo4j_uri,
@@ -140,7 +139,7 @@ async def update_config(request: Request):
     body = await request.json()
     cfg = r._pipeline.config
 
-    for field in ("model_name", "temperature", "concurrency", "chunk_size_tokens"):
+    for field in ("model_name", "temperature", "concurrency"):
         if field in body:
             setattr(cfg, field, body[field])
 

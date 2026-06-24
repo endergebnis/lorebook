@@ -54,11 +54,7 @@ class LorebookPipeline:
     # ------------------------------------------------------------------
 
     async def ingest_file(self, md_path: str | Path) -> list[Chunk]:
-        chunks = split_markdown(
-            md_path,
-            chunk_tokens=self._config.chunk_size_tokens,
-            overlap_tokens=self._config.chunk_overlap_tokens,
-        )
+        chunks = split_markdown(md_path)
         logger.info("Split %s → %d chunks", Path(md_path).name, len(chunks))
 
         async def _store(c: Chunk) -> None:

@@ -386,7 +386,7 @@ label { font-size: 12px; color: var(--dim); display: block; margin-bottom: 2px; 
       <option value="4">4</option>
     </select>
     <label>Worker URLs (comma-separated)</label>
-    <input type="text" id="worker-urls" placeholder="http://localhost:8080/v1, http://192.168.188.200:8080/v1" onchange="updateConfig()">
+    <input type="text" id="worker-urls" placeholder="http://localhost:8080/v1, http://192.168.188.204:8080/v1" onchange="updateConfig()">
     <div id="config-saved" style="font-size:11px;color:var(--green);margin-top:4px;display:none;">✅ Saved</div>
   </div>
 

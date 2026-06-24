@@ -1,0 +1,40 @@
+# Neo4j for Lorebook v2 — isolated on lorebook-net
+# Start: docker compose up -d
+# Stop:  docker compose down
+# Login: http://localhost:7475 — user neo4j, pass lorebook_secure_pass
+# Bolt:  bolt://localhost:7688
+
+services:
+  neo4j-lorebook:
+    image: neo4j:5.15
+    container_name: neo4j-lorebook
+    restart: unless-stopped
+    environment:
+      - NEO4J_AUTH=neo4j/lorebook_secure_pass
+      - NEO4J_server_memory_heap_initial__size=2G
+      - NEO4J_server_memory_heap_max__size=2G
+      - NEO4J_server_memory_pagecache_size=1G
+      - NEO4J_apoc_enabled=true
+      - NEO4J_apoc_trigger_enabled=true
+      - NEO4J_PLUGINS=["apoc"]
+    ports:
+      - "7475:7474"   # HTTP (isolated, not 7474)
+      - "7688:7687"   # Bolt (isolated, not 7687)
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+      - neo4j_backups:/backups
+      - neo4j_plugins:/plugins
+    networks:
+      - lorebook-net
+
+volumes:
+  neo4j_data:
+  neo4j_logs:
+  neo4j_backups:
+  neo4j_plugins:
+
+networks:
+  lorebook-net:
+    name: lorebook-net
+    driver: bridge

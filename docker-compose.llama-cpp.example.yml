@@ -1,0 +1,56 @@
+# llama.cpp server — example with GPU (CUDA)
+# Adjust: model path, -ngl count, --ctx-size, --threads to match your hardware.
+# GPU not required — remove runtime/deploy/devices sections for CPU-only.
+#
+# Start: docker compose -f docker-compose.llama-cpp.example.yml up -d
+# Stop:  docker compose -f docker-compose.llama-cpp.example.yml down
+
+services:
+  llama-server:
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    container_name: llama-cpp
+    restart: unless-stopped
+    runtime: nvidia
+    cap_add:
+      - IPC_LOCK
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./models:/models:ro
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=0
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [gpu]
+    command:
+      - "-m"
+      - "/models/your-model.gguf"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8080"
+      - "-ngl"
+      - "99"            # GPU layers — lower if VRAM < model size
+      - "--threads"
+      - "8"
+      - "--threads-batch"
+      - "16"
+      - "--batch-size"
+      - "512"
+      - "--ubatch-size"
+      - "256"
+      - "--ctx-size"
+      - "8192"
+      - "--flash-attn"
+      - "on"
+      - "--cache-type-k"
+      - "q4_0"
+      - "--cache-type-v"
+      - "q4_0"
+      - "--parallel"
+      - "1"

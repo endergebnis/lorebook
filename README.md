@@ -4,17 +4,60 @@ Tool-assisted entity extraction pipeline for light novels → Neo4j knowledge gr
 
 **Extracts** characters, locations, items, factions, and concepts from markdown using a local LLM (llama.cpp / OpenAI-compatible API). Uses tool-calling to query Neo4j before creating entities — no post-hoc dedup needed.
 
-## Quick Start
+## Architecture
+
+```
+Markdown files → Chunker (12k tokens/chunk)
+→ Extractor (LLM + search_entities tool)
+→ Neo4j (entities, events, chunks)
+→ Generator (LLM lorebook output)
+→ Export (Minecraft items)
+```
+
+No resolver phase — the LLM checks for duplicates **during** extraction via tool calling.
+
+## Infrastructure
+
+Lorebook v2 needs two backend services:
+
+| Service | Default URL | Role |
+|---------|------------|------|
+| **Neo4j** | `bolt://localhost:7688` / `http://localhost:7475` | Knowledge graph storage |
+| **llama.cpp** | `http://localhost:8080/v1` | LLM inference via OpenAI-compatible API |
+
+### 1. Start Neo4j
+
+```bash
+docker compose up -d
+# Neo4j Browser: http://localhost:7475
+# Credentials: neo4j / lorebook_secure_pass
+```
+
+Ports are **isolated** (`:7475`/`:7688`) so they don't collide with other Neo4j instances.
+
+### 2. Start llama.cpp
+
+```bash
+# CPU-only (small models)
+docker run -d --name llama-cpp \
+  -p 8080:8080 \
+  -v /path/to/models:/models:ro \
+  ghcr.io/ggml-org/llama.cpp:server \
+  -m /models/your-model.gguf --host 0.0.0.0 --port 8080
+
+# Or with GPU (CUDA)
+# See docker-compose.llama-cpp.example.yml
+```
+
+Any OpenAI-compatible endpoint works — Ollama, text-generation-webui, vLLM.
+
+### 3. Start Lorebook
 
 ```bash
 pip install -r requirements.txt
 python run.py server
 # → http://localhost:8520
 ```
-
-Requires:
-- [Neo4j](https://neo4j.com/) running locally (bolt://localhost:7688)
-- [llama.cpp](https://github.com/ggerganov/llama.cpp) server with `/v1` API at `http://localhost:8080/v1`
 
 ## Commands
 
